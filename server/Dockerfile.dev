@@ -1,0 +1,162 @@
+# --- Dev image: hot-reload TypeScript avec tsx ---
+FROM node:22-alpine
+
+WORKDIR /usr/src/app
+
+#pour prisma
+RUN apk add --no-cache openssl
+
+# 1) Installer dépendances
+COPY package*.json ./
+RUN npm ci
+
+# 2) (Optionnel) Pré-générer Prisma si tu souhaites avoir l'auto-complétion dans le conteneur
+COPY prisma ./prisma
+RUN npx prisma generate
+
+# 3) On ne copie pas le code: il sera monté en volume (compose)
+# 4) Dossier uploads pour éviter les erreurs si UPLOAD_DIR pointe ici
+RUN mkdir -p /usr/src/app/uploads
+
+EXPOSE 8080
+# La commande réelle est fournie par docker-compose (npm run dev)
+
+
+# ============================================================================
+# 📘 Résumé pédagogique complet — Dockerfile de développement (hot-reload + Prisma)
+# ----------------------------------------------------------------------------
+# 🔹 1. Objectif du fichier
+#
+# Ce Dockerfile est conçu spécifiquement pour **le développement local** :
+#   ➤ Il crée une image Node.js légère basée sur Alpine.
+#   ➤ Il installe les dépendances nécessaires (Node + Prisma).
+#   ➤ Il prépare l’environnement de travail (uploads, client Prisma).
+#   ➤ Et surtout : il laisse le code source être monté dynamiquement depuis l’hôte
+#     pour permettre le **hot-reload** automatique.
+#
+# 💡 En clair : ce conteneur n’est pas destiné à la production, mais au **dev rapide**.
+#
+# ----------------------------------------------------------------------------
+# 🔹 2. Ligne par ligne
+#
+# --------------------------------------------------------------------------
+# FROM node:22-alpine
+# --------------------------------------------------------------------------
+# ➜ Base de l’image : Node.js v22 sur Alpine Linux.
+#   - Alpine est très légère (~5 Mo) → builds rapides.
+#   - Parfaite pour le développement Dockerisé.
+#   - Node 22 = version LTS moderne compatible avec tsx / Prisma.
+#
+# --------------------------------------------------------------------------
+# WORKDIR /usr/src/app
+# --------------------------------------------------------------------------
+# ➜ Définit le dossier de travail dans le conteneur.
+#   Toutes les commandes suivantes (COPY, RUN, CMD...) se feront depuis ce répertoire.
+#
+# Exemple : le code sera accessible ici : `/usr/src/app`.
+#
+# --------------------------------------------------------------------------
+# RUN apk add --no-cache openssl
+# --------------------------------------------------------------------------
+# ➜ Installe la librairie OpenSSL (nécessaire à Prisma pour fonctionner correctement).
+#   Sans cela, Prisma renverrait une erreur du type :
+#     "Prisma failed to detect libssl version".
+#
+# `--no-cache` permet d’éviter de stocker les fichiers d’installation (gain de taille).
+#
+# --------------------------------------------------------------------------
+# COPY package*.json ./
+# RUN npm ci
+# --------------------------------------------------------------------------
+# ➜ Étape d’installation des dépendances :
+#   - `COPY package*.json ./` : copie uniquement les fichiers de dépendances.
+#   - `npm ci` : installe les dépendances exactes du lockfile (`package-lock.json`).
+#
+# Avantage :
+#   - C’est plus rapide et reproductible que `npm install`.
+#   - Permet à Docker de **mettre en cache** cette étape tant que `package*.json` ne change pas.
+#
+# --------------------------------------------------------------------------
+# COPY prisma ./prisma
+# RUN npx prisma generate
+# --------------------------------------------------------------------------
+# ➜ Copie le dossier `prisma/` (où se trouve ton `schema.prisma`).
+# ➜ Génère le **client Prisma** à l’intérieur du conteneur.
+#
+# Cela permet :
+#   - d’utiliser Prisma directement dans le code TypeScript.
+#   - d’avoir l’auto-complétion dans les IDE connectés au conteneur.
+#
+# --------------------------------------------------------------------------
+# # 3) On ne copie pas le code: il sera monté en volume (compose)
+# --------------------------------------------------------------------------
+# ➜ Dans un environnement de dev, le code source n’est **pas copié** dans l’image.
+#   À la place :
+#   - Docker Compose montera le dossier local (`./server`) dans le conteneur.
+#   - Toute modification locale sera immédiatement visible dans le conteneur.
+#
+# ➜ Cela permet le **hot-reload** grâce à `tsx --watch` ou `nodemon`.
+#
+# --------------------------------------------------------------------------
+# RUN mkdir -p /usr/src/app/uploads
+# --------------------------------------------------------------------------
+# ➜ Crée un dossier `uploads` pour éviter les erreurs d’accès disque.
+#   Cela correspond au chemin utilisé par la variable `UPLOAD_DIR`.
+#
+# Ce répertoire est souvent monté comme un volume dans `docker-compose.yml`
+# pour persister les fichiers envoyés par les utilisateurs.
+#
+# --------------------------------------------------------------------------
+# EXPOSE 8080
+# --------------------------------------------------------------------------
+# ➜ Documente le port d’écoute principal de ton application Express.
+#   - Port 8080 → serveur HTTP principal.
+#
+# ⚠️ Cette instruction **n’ouvre pas réellement le port** :
+#   la publication se fait dans `docker-compose.yml` via :
+#     ports:
+#       - "8080:8080"
+#
+# --------------------------------------------------------------------------
+# # La commande réelle est fournie par docker-compose (npm run dev)
+# --------------------------------------------------------------------------
+# ➜ Ce Dockerfile ne définit pas de `CMD` (commande par défaut),
+#   car c’est `docker-compose.yml` qui précise :
+#     command: ["npm", "run", "dev"]
+#
+#   Cela laisse la flexibilité de changer la commande sans rebuild de l’image.
+#
+# ----------------------------------------------------------------------------
+# 🔹 3. Cycle d’utilisation (dans Docker Compose)
+#
+# 1️⃣ Docker construit cette image une seule fois.
+# 2️⃣ Le conteneur démarre avec `npm run dev` (donc `tsx watch src/index.ts`).
+# 3️⃣ Ton code source est monté en volume → tout changement redémarre automatiquement.
+# 4️⃣ Prisma, Express, etc. tournent comme s’ils étaient installés localement.
+#
+# ----------------------------------------------------------------------------
+# 🔹 4. Bonnes pratiques pédagogiques
+#
+# ✅ Toujours isoler l’environnement de dev (Dockerfile.dev séparé du Dockerfile prod).
+# ✅ Monter le code via volume pour profiter du hot-reload.
+# ✅ Installer uniquement les dépendances (pas le code source) dans l’image.
+# ✅ Documenter les ports exposés pour la clarté.
+# ✅ Utiliser `npm ci` pour des builds reproductibles.
+# ✅ Préparer Prisma dans le conteneur pour éviter les erreurs de runtime.
+#
+# ----------------------------------------------------------------------------
+# 💡 En résumé :
+#
+# Ce Dockerfile de développement crée un environnement complet et isolé
+# pour coder avec Express + TypeScript + Prisma :
+#   - hot-reload actif grâce à `tsx watch`,
+#   - Prisma client généré à l’avance,
+#   - code monté depuis l’hôte,
+#   - dépendances installées proprement.
+#
+# ➤ Pédagogiquement :
+#   - Il montre la différence entre image de dev et image de prod.
+#   - Il illustre la notion de **volumes** et de **couches Docker**.
+#   - Il initie à l’usage de Prisma dans un environnement conteneurisé.
+#   - Il sensibilise à la reproductibilité et la modularité des environnements Node.js.
+# ============================================================================

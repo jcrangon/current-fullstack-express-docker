@@ -1,0 +1,183 @@
+networks:
+  app-net:
+    driver: bridge
+
+volumes:
+  pg_data:
+  mongo_data:
+  upload_data:
+
+services:
+  client:
+    build: ./client
+    container_name: fs_client
+    working_dir: /app
+    environment:
+      - VITE_API_URL=http://localhost:8080   # le navigateur contacte l'API via l'hôte
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+      - BROWSER=none
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    command: ["npm","run","dev","--","--host"]
+    networks: [app-net]
+
+  api:
+    build: 
+      context: ./server
+      dockerfile: Dockerfile.dev
+      # prod-> dockerfile: Dockerfile
+    container_name: fs_api
+    working_dir: /usr/src/app
+    # Charge d'abord .env (base), puis .env.docker (override des valeurs Docker)
+    env_file:
+      - ./.env
+      - ./.env.docker
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=300
+      - WATCHPACK_POLLING=true 
+    ports:
+      - "8080:8080"
+      - "5555:5555"   # Prisma Studio (optionnel)
+    volumes:
+      - ./server:/usr/src/app
+      - /usr/src/app/node_modules
+      - upload_data:/usr/src/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_started
+    # command: ["npm","run","dev"] 
+    command: ["npm","run", "dev:wait"]  # Utiliser cette ligne si vous avez un script pour attendre la DB
+    networks: [app-net]
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: fs_postgres
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d appdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [app-net]
+
+  mongo:
+    image: mongo:7
+    container_name: fs_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks: [app-net]
+
+
+# =============================================================================
+# 📘 Résumé pédagogique complet — Lecture de ce docker-compose.yml
+# -----------------------------------------------------------------------------
+# 🎯 Objectif du fichier
+# Ce compose décrit une stack de dev complète :
+#   • client (Vite/React)  • api (Express/TS/Prisma)  • postgres  • mongo
+# Il orchestre les conteneurs, leur réseau, leurs volumes persistants et
+# l’injection de variables d’environnement (.env + .env.docker).
+#
+# -----------------------------------------------------------------------------
+# 🔗 Réseaux
+# networks.app-net (bridge) :
+#   • Chaque service rejoint un réseau privé Docker.
+#   • Le NOM du service = hostname DNS interne (ex: "postgres", "mongo").
+#   • C’est pourquoi DATABASE_URL/MONGO_URL pointent vers postgres/mongo
+#     au lieu de localhost dans .env.docker.
+#
+# -----------------------------------------------------------------------------
+# 💾 Volumes persistants
+# volumes:
+#   • pg_data       → conserve les données PostgreSQL
+#   • mongo_data    → conserve les données MongoDB
+#   • upload_data   → conserve les fichiers uploadés
+# Bénéfice : vos données survivent aux `down` / `rebuild` des conteneurs.
+#
+# -----------------------------------------------------------------------------
+# 🧩 Service client (Vite)
+# - Monte ./client dans /app → hot-reload instantané.
+# - VITE_API_URL=http://localhost:8080 : le navigateur (hors conteneur) contacte
+#   l’API via la machine hôte.
+# - --host : Vite écoute en 0.0.0.0 dans le conteneur.
+# - CHOKIDAR_USEPOLLING/WATCHPACK_POLLING : fiabilise les watchers sous Docker/WSL2.
+#
+# -----------------------------------------------------------------------------
+# ⚙️ Service api (Express/TypeScript/Prisma)
+# - build → Dockerfile.dev (dev). En prod, utiliser un Dockerfile multi-stage.
+# - env_file: [.env, .env.docker]
+#     • .env = base commune (JWT, TTL, CORS, etc.)
+#     • .env.docker = overrides réseau/chemins (hosts postgres/mongo, UPLOAD_DIR)
+#   → Workflow pro : même code, configs selon environnement, pas de duplication.
+# - volumes:
+#     • ./server:/usr/src/app        → hot-reload TS via tsx/nodemon
+#     • /usr/src/app/node_modules    → volume anonyme pour conserver l’install conteneur
+#     • upload_data:/usr/src/app/uploads → persistance des fichiers
+# - depends_on:
+#     • postgres: service_healthy (attend que PG réponde à pg_isready)
+#     • mongo: service_started (démarré, sans healthcheck)
+# - command: ["npm","run","dev"] (ou "dev:wait" si vous utilisez wait-on tcp:postgres:5432)
+#
+# -----------------------------------------------------------------------------
+# 🐘 Service postgres
+# - Image postgres:16-alpine, variables d’init (DB/USER/PASSWORD).
+# - Healthcheck pg_isready → permet à l’API d’attendre une DB prête.
+# - Port 5432 exposé pour outils locaux (psql, IDE).
+#
+# -----------------------------------------------------------------------------
+# 🍃 Service mongo
+# - Image mongo:7, port 27017 exposé pour Compass/mongosh.
+# - Volume mongo_data pour la persistance.
+#
+# -----------------------------------------------------------------------------
+# 💡 Pourquoi ce workflow .env + .env.docker ?
+# - .env contient la configuration commune (sécurité, CORS, TTL, etc.).
+# - .env.docker remplace uniquement ce qui change en conteneur :
+#     • hosts DB (postgres/mongo) au lieu de localhost
+#     • chemins absolus (UPLOAD_DIR) cohérents avec WORKDIR
+# Avantages :
+#   ✅ Une seule source de vérité pour les nouvelles variables (.env)
+#   ✅ Override minimal et explicite côté Docker
+#   ✅ Zéro modification du code entre local et conteneur
+#
+# -----------------------------------------------------------------------------
+# 🏎️ Hot-reload & productivité
+# - Front : Vite + volumes → rechargement instantané.
+# - API  : tsx watch + volumes → relance à chaque modification TS.
+# - Prisma Studio (5555) accessible depuis l’hôte pour explorer la DB.
+#
+# -----------------------------------------------------------------------------
+# ✅ Bonnes pratiques
+# - Séparer Dockerfile.dev (dev) et Dockerfile (prod multi-stage).
+# - Ajouter des healthchecks aux services critiques (déjà pour Postgres).
+# - Versionner `.env.example`, ignorer `.env*` sensibles.
+# - Centraliser l’accès aux variables via un `env.ts` (validation + typage).
+#
+# -----------------------------------------------------------------------------
+# 🧭 En résumé
+# Ce compose met en place un environnement de dev pro :
+#   • Réseau privé avec DNS par nom de service
+#   • Données persistantes (DB & uploads)
+#   • Hot-reload front/back
+#   • Configs propres via .env + .env.docker
+#   • Démarrage ordonné grâce aux conditions depends_on/healthcheck
+# C’est un socle reproductible, lisible et prêt pour évoluer vers une
+# image de production (multi-stage) et un compose dédié au déploiement.
+# =============================================================================

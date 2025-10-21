@@ -1,0 +1,93 @@
+
+/// ============================================================================
+/// 📘 Résumé pédagogique complet — Comprendre ce fichier `prisma.schema`
+/// ----------------------------------------------------------------------------
+/// Ce fichier est le **cœur de la configuration Prisma** : il décrit la base de
+/// données et la manière dont Prisma va générer le code pour y accéder.
+///
+/// 🔹 1. Le bloc `generator`
+///    - Ici, Prisma va générer un **client JavaScript/TypeScript** prêt à l’emploi.
+///    - Ce client sera disponible via l’import suivant dans ton code Node.js :
+///        ```ts
+///        import { PrismaClient } from '@prisma/client';
+///        const prisma = new PrismaClient();
+///        ```
+///    - C’est ce client qui te permettra d’exécuter des requêtes comme :
+///        ```ts
+///        const users = await prisma.user.findMany();
+///        ```
+///
+/// 🔹 2. Le bloc `datasource`
+///    - Il indique **le type de base de données** utilisée et la **chaîne de connexion**.
+///    - Ici, `provider = "postgresql"` ⇒ Prisma utilise **PostgreSQL**.
+///    - L’URL de connexion est récupérée depuis une **variable d’environnement**
+///      (`DATABASE_URL`), définie dans ton fichier `.env`, par exemple :
+///        ```bash
+///        DATABASE_URL="postgresql://postgres:password@localhost:5432/appdb?schema=public"
+///        ```
+///
+/// 🔹 3. Le modèle `User`
+///    - Chaque modèle représente **une table** de la base de données.
+///    - Prisma va automatiquement créer la table `User` avec les colonnes suivantes :
+///
+///      | Champ       | Type Prisma | Type SQL        | Rôle / Détail                                         |
+///      |--------------|-------------|------------------|--------------------------------------------------------|
+///      | id           | Int         | SERIAL / INTEGER | Clé primaire auto-incrémentée (`@id @default(autoincrement())`) |
+///      | email        | String      | TEXT / VARCHAR   | Doit être unique (`@unique`)                           |
+///      | name         | String      | TEXT / VARCHAR   | Nom de l’utilisateur                                   |
+///      | password     | String      | TEXT / VARCHAR   | Mot de passe (hashé)                                  |
+///      | createdAt    | DateTime    | TIMESTAMP        | Date de création, valeur par défaut `now()`            |
+///      | updatedAt    | DateTime    | TIMESTAMP        | Mis à jour automatiquement à chaque modification (`@updatedAt`) |
+///
+/// 🔹 4. Migration et génération
+///    - Après modification du modèle, il faut **synchroniser** Prisma avec la base :
+///        ```bash
+///        npx prisma migrate dev --name init
+///        ```
+///    - Puis générer le client à jour :
+///        ```bash
+///        npx prisma generate
+///        ```
+///
+/// 🔹 5. Requêtes possibles via Prisma Client
+///    - Créer un utilisateur :
+///        ```ts
+///        await prisma.user.create({ data: { email, name, password } });
+///        ```
+///    - Trouver tous les utilisateurs :
+///        ```ts
+///        const allUsers = await prisma.user.findMany();
+///        ```
+///    - Mettre à jour un utilisateur :
+///        ```ts
+///        await prisma.user.update({ where: { id: 1 }, data: { name: "Jean" } });
+///        ```
+///    - Supprimer un utilisateur :
+///        ```ts
+///        await prisma.user.delete({ where: { id: 1 } });
+///        ```
+///
+/// 🔹 6. Bonnes pratiques pédagogiques
+///    ✅ Toujours vérifier la présence de `DATABASE_URL` dans ton environnement.
+///    ✅ Ne jamais stocker de mot de passe en clair (toujours le hacher avant).
+///    ✅ Utiliser `npx prisma studio` pour explorer visuellement la base.
+///    ✅ Ajouter des modèles supplémentaires (ex : `Post`, `Comment`, etc.) pour
+///       observer la création automatique des relations par Prisma.
+///
+/// ----------------------------------------------------------------------------
+/// En résumé :
+/**
+ * Ce fichier `prisma.schema` agit comme une **source unique de vérité** entre
+ * ton code et ta base de données. 
+ * Il définit :
+ *  - le **type de base** utilisée (ici PostgreSQL),
+ *  - les **modèles de données** (ici `User`),
+ *  - et permet à Prisma de générer automatiquement le client JS/TS.
+ *
+ * L’intérêt pédagogique est double :
+ * 1️⃣ Montrer comment la modélisation de données en code (modèle Prisma)
+ *     se traduit automatiquement en table SQL via les migrations.
+ * 2️⃣ Permettre aux étudiants de manipuler une base SQL complexe sans écrire
+ *     une seule requête SQL à la main, grâce à un ORM moderne et typé.
+ */
+/// ============================================================================
