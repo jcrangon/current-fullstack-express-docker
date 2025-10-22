@@ -2,7 +2,7 @@ import fs from "node:fs";
 import app from "./app";
 import { env } from "./config/env";
 
-console.log("hello");
+console.log("hello world");
 
 app.listen(env.PORT, () => {
   console.log("API listening on port", env.PORT);

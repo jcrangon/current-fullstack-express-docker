@@ -30,9 +30,8 @@ export async function register( req: Request, res: Response) {
 
 export async function login( req: Request, res: Response) {
     const { email, password } = req.body;
-    
     const user: User | null = await prisma.user.findUnique({
-        where: { email }
+        where: { email },
     });
 
     if (!user) {
@@ -62,9 +61,10 @@ export async function login( req: Request, res: Response) {
         maxAge: 2 * 60 * 1000 // 2m
     })
 
-    return res.status(200).json({ 
-        message: "Login successful", 
+    return res.status(200).json({
+        message: "Login successful",
         refreshToken: refreshToken,
+        user: { id: user.id, email: user.email, name: user.name }
     });
 }
 
@@ -130,7 +130,8 @@ export async function refreshToken(req: Request, res: Response) {
 
     return res.status(200).json({ 
         message: "Refresh successful", 
-        refreshToken: refreshToken,
+        refreshToken: newRefreshToken,
+        user: { id: user.id, email: user.email, name: user.name }
     });
 
   } catch (err: any) {
@@ -150,7 +151,7 @@ export async function me(req: Request, res: Response) {
     where: { id: Number(payload.sub) },
     select: { id: true, email: true, name: true }
   });
-  return res.json(user);
+  return res.json({ user });
 }
 
 export async function logout( req: Request, res: Response) {
