@@ -88,16 +88,17 @@ export async function refreshToken(req: Request, res: Response) {
       return res.status(401).json({ error: "Invalid Refresh token" });
     }
 
+    // on recupere l'id du user dans le token
+    const userId = Number(payload.sub);
+
     const storedToken = await prisma.refreshToken.findUnique({
-      where: { token: refreshToken, userId: payload.userId }
+      where: { token: refreshToken, userId: userId }
     });
     
     if (!storedToken) {
       return res.status(401).json({ error: "Refresh token not found" });
     }
 
-    // on recupere l'id du user dans le token
-    const userId = Number(payload.sub);
     const user = await prisma.user.findUnique({
       where: { id: userId }
     });
